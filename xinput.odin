@@ -6,7 +6,7 @@
  *  @Creation: 02-05-2017 21:38:35
  *
  *  @Last By:   Mikkel Hjortshoej
- *  @Last Time: 28-10-2017 00:11:58
+ *  @Last Time: 28-10-2017 17:02:56
  *  
  *  @Description:
  *      This is a XInput wrapper which uses late-binding.
@@ -249,12 +249,11 @@ XInputVersion :: enum {
 
 Version := XInputVersion.NotLoaded;
 
-set_proc_address :: #type proc(lib : rawptr, p: rawptr, name: string, info : ^Type_Info) #inline;
+set_proc_address :: #type proc(lib : rawptr, p: rawptr, name: string) #inline;
 load_library     :: #type proc(name : string) -> rawptr;
-free_library     :: #type proc(lib : rawptr);
 
-init :: proc(set_proc : set_proc_address, load_lib : load_library, free_lib : free_library, initalState : bool = true) -> bool {
-    lib := load_lib("xinput1_4.dll");
+init :: proc(set_proc : set_proc_address, load_lib : load_library, initalState : bool = true) -> bool {
+    lib := load_lib("xinput1_4.dll"); //NOTE(Hoej): Freeing this will make any xinput calls panic at runtime.
     using XInputVersion;
     Version = Version1_4;
     if lib == nil {
@@ -273,12 +272,12 @@ init :: proc(set_proc : set_proc_address, load_lib : load_library, free_lib : fr
         return false;
     }
 
-    set_proc(lib, &_Enable,                "XInputEnable",                type_info_of(_Enable));
-    set_proc(lib, &_GetBatteryInformation, "XInputGetBatteryInformation", type_info_of(_GetBatteryInformation));
-    set_proc(lib, &_GetCapabilities,       "XInputGetCapabilities",       type_info_of(_GetCapabilities));
-    set_proc(lib, &GetKeystroke,          "XInputGetKeystroke",          type_info_of(GetKeystroke));
-    set_proc(lib, &_GetState,              "XInputGetState",              type_info_of(_GetState));
-    set_proc(lib, &_SetState,              "XInputSetState",              type_info_of(_SetState));
+    set_proc(lib, &_Enable,                "XInputEnable"               );
+    set_proc(lib, &_GetBatteryInformation, "XInputGetBatteryInformation");
+    set_proc(lib, &_GetCapabilities,       "XInputGetCapabilities"      );
+    set_proc(lib, &GetKeystroke,          "XInputGetKeystroke"         );
+    set_proc(lib, &_GetState,              "XInputGetState"             );
+    set_proc(lib, &_SetState,              "XInputSetState"             );
 
     Enable(initalState);
 
