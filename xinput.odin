@@ -1,3 +1,4 @@
+package xinput
 /*
  *  @Name:     xinput
  *  
@@ -5,16 +6,12 @@
  *  @Email:    hjortshoej@handmade.network
  *  @Creation: 02-05-2017 21:38:35
  *
- *  @Last By:   Mikkel Hjortshoej
- *  @Last Time: 28-10-2017 17:02:56
+ *  @Last By:   Joe Sycalik
+ *  @Last Time: 28-5-2020 9:12 AM
  *  
  *  @Description:
  *      This is a XInput wrapper which uses late-binding.
  */
-
-import "core:fmt.odin";
-import "core:strings.odin";
-import "mantle:libbrew/win/misc.odin";
 
 LEFT_THUMB_DEADZONE  :: 7849;
 RIGHT_THUMB_DEADZONE :: 8689;
@@ -26,12 +23,12 @@ Error :: u32;
 Success : Error : 0;
 NotConnected : Error : 1167;
 
-BatteryInformation :: struct #ordered {
+BatteryInformation :: struct {
     type_  : BatteryType,
     level : BatteryLevel,
 }
 
-Capabilities :: struct #ordered {
+Capabilities :: struct {
     type_      : u8,
     sub_type  : ControllerType,
     flags     : CapabilitiesFlags,
@@ -39,12 +36,12 @@ Capabilities :: struct #ordered {
     vibration : VibrationState,
 }
 
-State :: struct #ordered {
+State :: struct {
     packet_number : u32,
     gamepad : GamepadState,
 }
 
-GamepadState :: struct #ordered {
+GamepadState :: struct {
     buttons      : u16,
     left_trigger  : u8,
     right_trigger : u8,
@@ -54,12 +51,12 @@ GamepadState :: struct #ordered {
     ry           : i16,
 }
 
-VibrationState :: struct #ordered {
+VibrationState :: struct {
     left_motor_speed  : u16,
     right_motor_speed : u16,
 }
 
-KeyStroke :: struct #ordered {
+KeyStroke :: struct {
     virtual_key : VirtualKeys,
     unicode    : u16,
     flags      : KeyStrokeFlags,
@@ -179,31 +176,34 @@ User :: enum u32 {
     Player4 = 3,
 }
 
-_Enable                : proc(enable    : i32) #cc_c;
-_GetBatteryInformation : proc(userIndex : u32, dev_type : DeviceType, out : ^BatteryInformation) -> u32 #cc_c;
-_GetCapabilities       : proc(userIndex : u32, type_ : u32, out : ^Capabilities) -> u32 #cc_c;
+_Enable                 :: distinct #type proc "stdcall" (enable : i32);
+_GetBatteryInformation  :: distinct #type proc "stdcall" (userIndex : u32, dev_type : DeviceType, out : ^BatteryInformation) -> u32;
+_GetCapabilities        :: distinct #type proc "stdcall" (userIndex : u32, type_ : u32, out : ^Capabilities) -> u32;
 //TODO(Hoej): Write Wrapper
-GetKeystroke          : proc(userIndex : u32, reserved : u32, out : ^KeyStroke)-> u32 #cc_c;
-_GetState              : proc(userIndex : u32, state : ^State) -> u32 #cc_c;
-_SetState              : proc(userIndex : u32, state : ^VibrationState) -> u32 #cc_c;
+_GetKeystroke            :: distinct #type proc "stdcall" (userIndex : u32, reserved : u32, out : ^KeyStroke)-> u32;
+_GetState               :: distinct #type proc "stdcall" (userIndex : u32, state : ^State) -> u32;
+_SetState               :: distinct #type proc "stdcall" (userIndex : u32, state : ^VibrationState) -> u32;
 
-Enable :: proc(enable : bool) {
-    if _Enable != nil {
-        _Enable(i32(enable));
+enable : _Enable;
+get_battery_information : _GetBatteryInformation;
+get_capabilities : _GetCapabilities;
+get_keystroke : _GetKeystroke;
+get_state : _GetState;
+set_state : _SetState;
+
+Enable :: proc(b : bool) {
+    if enable != nil {
+        enable(i32(b));
     } else {
         //TODO: Logging        
     }
 }
 
-GetCapabilities :: proc(user : User) -> (Capabilities, Error) {
-    return GetCapabilities(user, false);
-}
-
-GetCapabilities :: proc(user : User, onlyGamepads : bool)  -> (Capabilities, Error) {
-    if _GetCapabilities != nil {
+GetCapabilities :: proc(user : User, onlyGamepads : bool = false)  -> (Capabilities, Error) {
+    if get_capabilities != nil {
         res := Capabilities{};
         g : u32 = onlyGamepads ? XINPUT_FLAG_GAMEPAD : 0;
-        err := _GetCapabilities(u32(user), g, &res);
+        err := get_capabilities(u32(user), g, &res);
         return res, Error(err);
     } else {
         //TODO: Logging        
@@ -212,9 +212,9 @@ GetCapabilities :: proc(user : User, onlyGamepads : bool)  -> (Capabilities, Err
 }
 
 GetState :: proc(user : User) -> (State, Error) {
-    if _GetState != nil {
+    if get_state != nil {
         res := State{};
-        err := _GetState(u32(user), &res);
+        err := get_state(u32(user), &res);
         return res, Error(err);
     } else {
         //TODO: Logging        
@@ -224,13 +224,13 @@ GetState :: proc(user : User) -> (State, Error) {
 }
 
 SetState :: proc(user : User, left : f32, right : f32) -> Error {
-    if _GetState != nil {
+    if set_state != nil {
         res := VibrationState{};
         U16_MAX :: 65535;
         res.left_motor_speed = u16(U16_MAX * left);
         res.right_motor_speed = u16(U16_MAX * right);
 
-        err := _SetState(u32(user), &res);
+        err := set_state(u32(user), &res);
         return Error(err);
     } else {
         //TODO: Logging        
@@ -249,35 +249,34 @@ XInputVersion :: enum {
 
 Version := XInputVersion.NotLoaded;
 
-set_proc_address :: #type proc(lib : rawptr, p: rawptr, name: string) #inline;
+set_proc_address :: #type proc(lib  : rawptr, name: string) -> rawptr;
 load_library     :: #type proc(name : string) -> rawptr;
 
 init :: proc(set_proc : set_proc_address, load_lib : load_library, initalState : bool = true) -> bool {
     lib := load_lib("xinput1_4.dll"); //NOTE(Hoej): Freeing this will make any xinput calls panic at runtime.
-    using XInputVersion;
-    Version = Version1_4;
+    Version = XInputVersion.Version1_4;
     if lib == nil {
         lib = load_lib("xinput1_3.dll");
-        Version = Version1_3;
+        Version = XInputVersion.Version1_3;
     }
 
     if lib == nil {
         lib := load_lib("xinput9_1_0.dll");
-        Version = Version9_1_0;
+        Version = XInputVersion.Version9_1_0;
     }
 
     if lib == nil {
-        Version = Error;
+        Version = XInputVersion.Error;
         //TODO: Logging
         return false;
     }
 
-    set_proc(lib, &_Enable,                "XInputEnable"               );
-    set_proc(lib, &_GetBatteryInformation, "XInputGetBatteryInformation");
-    set_proc(lib, &_GetCapabilities,       "XInputGetCapabilities"      );
-    set_proc(lib, &GetKeystroke,          "XInputGetKeystroke"         );
-    set_proc(lib, &_GetState,              "XInputGetState"             );
-    set_proc(lib, &_SetState,              "XInputSetState"             );
+    enable                  = _Enable(               set_proc(lib, "XInputEnable"));
+    get_battery_information = _GetBatteryInformation(set_proc(lib, "XInputGetBatteryInformation"));
+    get_capabilities        = _GetCapabilities(      set_proc(lib, "XInputGetCapabilities"));
+    get_keystroke           = _GetKeystroke(         set_proc(lib, "XInputGetKeystroke"));
+    set_state               = _SetState(             set_proc(lib, "XInputSetState"));
+    get_state               = _GetState(             set_proc(lib, "XInputGetState"));
 
     Enable(initalState);
 
