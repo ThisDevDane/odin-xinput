@@ -261,7 +261,7 @@ init :: proc(set_proc : set_proc_address, load_lib : load_library, initalState :
     }
 
     if lib == nil {
-        lib := load_lib("xinput9_1_0.dll");
+        lib = load_lib("xinput9_1_0.dll");
         Version = XInputVersion.Version9_1_0;
     }
 
